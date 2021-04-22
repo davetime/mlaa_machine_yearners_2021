@@ -1,0 +1,545 @@
+---
+title: "Untitled"
+author: "David Timewell"
+date: "20/04/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,load libraries}
+
+library(tidyverse)
+library(here)
+library(skimr)
+library(lubridate)
+library(ggplot2)
+library(egg)
+library(sqldf)
+library(broom)
+library(janitor)
+library(Metrics)
+library(fastDummies)
+library(Amelia)
+library(rsample)
+library(ranger)
+library(randomForest)
+library(caret)
+library(ROCR)
+library(gbm)
+library(vip)
+library(corrplot)
+library(ROSE)
+library(broom)
+ 
+
+
+```
+
+
+
+
+```{r,import data}
+
+# Import Data
+
+
+ 
+
+
+
+data_cred <- read_csv(here("data", "AT2_credit_train.csv"))
+
+
+ 
+
+```
+
+Column 	Description
+ID 	ID of each client
+LIMIT_BAL 	Amount of given credit in dollars (includes individual and family/supplementary credit
+SEX 	Gender (1=male, 2=female)
+EDUCATION 	(1=graduate school, 2=university, 3=high school, 4=others, 5=unknown, 6=unknown)
+MARRIAGE 	Marital status (1=married, 2=single, 3=others)
+AGE 	Age in years
+PAY_X 	Repayment status for the past X months.
+-1=paid on time; 1=payment delay for one month; 2=payment delay for two months etc
+BILL_AMTX 	Bill amount for past X months
+PAY_AMTX 	Payment amount for last X months
+default 	Default payment next month (1=yes, 0=no). This is the Target variable
+
+
+
+```{r}
+
+
+skim(data_cred)
+
+```
+
+
+
+```{r}
+
+
+str(data_cred)
+
+```
+
+# COLUMNS
+
+
+## Defaut Column
+
+Data imbalanced. Only 2% Y.  Consider up or down sampling in train set.
+
+```{r}
+
+prop.table(table(data_cred$default))
+
+
+```
+
+
+
+## SEX column
+
+SEX 	Gender (1=male, 2=female)
+
+```{r}
+
+data_cred$SEX <- as.factor(data_cred$SEX) 
+
+table(data_cred$SEX)
+
+
+ggplot(data_cred,aes(x=SEX)) + geom_bar()
+
+
+#NA and another column = 2113
+
+#consider removing columns below
+
+data_cred %>% filter(SEX %in% c(2113,NA)) 
+
+
+
+```
+
+
+## AGE column
+
+AGE 	Age in years
+
+
+```{r}
+
+# Look at min age = 21
+min(data_cred$AGE)
+# look at max age = 174
+max(data_cred$AGE) 
+
+
+
+
+#data_cred$AGE <- as.factor(data_cred$AGE) 
+
+#table(data_cred$AGE)
+
+
+ggplot(data_cred,aes(x=AGE_BAND)) + geom_bar()
+
+
+```
+
+```{r}
+#NA and another column = 2113
+
+#consider removing columns for 100+, only 18 rows
+
+data_cred %>% filter(AGE_BAND == "100+")
+
+
+```
+
+## Marriage
+
+MARRIAGE 	Marital status (1=married, 2=single, 3=others)
+
+
+```{r}
+
+
+ggplot(data_cred,aes(x=MARRIAGE)) + geom_bar()
+
+
+```
+
+
+```{r}
+
+data_cred %>% filter(MARRIAGE==0)
+
+```
+
+rows look sensible
+
+opions move 0 to 3
+or try impute values 
+
+
+
+## Education
+
+
+
+EDUCATION 	(1=graduate school, 2=university, 3=high school, 4=others, 5=unknown, 6=unknown)
+
+
+```{r}
+
+ggplot(data_cred,aes(x=EDUCATION)) + geom_bar()
+
+
+```
+
+
+```{r}
+
+
+
+ggplot(data_cred,aes(x=EDUCATION)) + geom_bar()
+
+```
+
+
+
+## PAY_X
+
+
+PAY_X 	Repayment status for the past X months.
+-1=paid on time; 1=payment delay for one month; 2=payment delay for two months etc
+
+
+```{r}
+
+#What is -2 ?
+
+sort(unique(data_cred$PAY_0))
+#unique(data_cred$PAY_1) no PAY_1
+sort(unique(data_cred$PAY_2))
+sort(unique(data_cred$PAY_3))
+sort(unique(data_cred$PAY_4))
+sort(unique(data_cred$PAY_5))
+sort(unique(data_cred$PAY_6))
+```
+
+```{r}
+#There are alot of -2 rows. Impute ? or just leave them 
+data_cred %>% filter(PAY_0 == -2 | PAY_2 == -2 | PAY_3 == -2 | PAY_4 == -2 | PAY_5 == -2 |  PAY_6 == -2)
+
+
+```
+
+
+## Limit_Bal
+
+
+Amount of given credit in dollars (includes individual and family/supplementary credit
+
+
+
+
+```{r}
+# -99 doesn't seem right
+
+min(data_cred$LIMIT_BAL)
+max(data_cred$LIMIT_BAL)
+
+```
+
+```{r}
+
+# data seems off for -99 looking at age groups. Only 19 rows maybe remove them
+data_cred %>% filter(LIMIT_BAL==-99)
+
+
+```
+
+Some outliers shown in box plot
+
+```{r}
+
+ggplot(data_cred,aes(x=LIMIT_BAL)) + geom_boxplot()
+
+```
+
+## PAY_AMT_X
+
+
+PAY_AMT1
+```{r}
+# These only have two vaues per column 0 and another value. Its roughly 20% 0 and 80% he other vaue split per column
+
+table(data_cred$PAY_AMT1)
+
+prop.table(table(data_cred$PAY_AMT1))
+
+
+
+table(data_cred$PAY_AMT2)
+
+prop.table(table(data_cred$PAY_AMT2))
+
+
+table(data_cred$PAY_AMT3)
+
+prop.table(table(data_cred$PAY_AMT3))
+
+
+table(data_cred$PAY_AMT4)
+
+prop.table(table(data_cred$PAY_AMT4))
+
+
+table(data_cred$PAY_AMT5)
+
+prop.table(table(data_cred$PAY_AMT5))
+
+
+
+
+table(data_cred$PAY_AMT6)
+
+prop.table(table(data_cred$PAY_AMT6))
+
+
+
+```
+
+
+## BILL_AMT_X
+
+Bill amount for past X months
+
+BILL_AMT6,4,3,1 contain negative values
+
+
+
+
+```{r}
+
+
+ggplot(data_cred,aes(x=BILL_AMT1)) + geom_boxplot()
+
+
+```
+
+
+```{r}
+
+
+data_cred %>% filter(BILL_AMT1 < 0 )
+
+
+```
+
+
+
+```{r}
+
+
+ggplot(data_cred,aes(x=BILL_AMT2)) + geom_boxplot()
+
+
+```
+
+
+```{r}
+
+
+data_cred %>% filter(BILL_AMT2 < 0 )
+
+
+```
+
+
+
+
+```{r}
+
+
+ggplot(data_cred,aes(x=BILL_AMT3)) + geom_boxplot()
+
+
+```
+
+
+
+```{r}
+
+
+data_cred %>% filter(BILL_AMT3 < 0 )
+
+
+```
+
+
+```{r}
+
+
+ggplot(data_cred,aes(x=BILL_AMT4)) + geom_boxplot()
+
+
+```
+
+
+```{r}
+
+
+data_cred %>% filter(BILL_AMT4 < 0 )
+
+
+```
+
+
+
+```{r}
+
+
+ggplot(data_cred,aes(x=BILL_AMT5)) + geom_boxplot()
+
+
+```
+
+
+```{r}
+
+
+data_cred %>% filter(BILL_AMT5 < 0 )
+
+
+```
+
+
+```{r}
+
+
+ggplot(data_cred,aes(x=BILL_AMT6)) + geom_boxplot()
+
+
+```
+
+
+
+
+
+
+```{r}
+
+
+data_cred %>% filter(BILL_AMT6 < 0 )
+
+
+```
+
+
+## look at nearzero values
+
+
+```{r Example of nearZeroVar() function}
+
+# PAY_AMT1 - 3 
+
+nearZeroVar(data_cred, freqCut = 95/5, uniqueCut = 10)
+nearZeroVar(data_cred, freqCut = 80/20, uniqueCut = 10)
+```
+
+
+```{r}
+
+str(data_cred)
+
+
+
+
+```
+
+
+
+# CHANGES
+
+
+
+Keep original data set create a new one as the one for modelling
+
+```{r}
+
+model_data <- data_cred 
+
+
+```
+
+
+
+
+## feature changes
+
+
+
+```{r}
+#AGE
+#Create age band
+
+#Convet age to band, add as new column
+labs <- c(paste(seq(0, 95, by = 5), seq(0 + 5 - 1, 100 - 1, by = 5),
+                sep = "-"), paste(100, "+", sep = ""))
+
+AGE_BAND <- cut(model_data$AGE, breaks = c(seq(0, 100, by = 5), Inf), labels = labs, right = FALSE)
+
+
+model_data <- model_data %>%  mutate(AGE_BAND=as.factor(AGE_BAND))
+
+
+#SEX
+#remove the below columns
+
+model_data <- model_data %>% filter(!SEX %in% c(2113,NA)) 
+
+
+#MARRIAGE
+
+
+# move 0 to 3
+
+model_data$MARRIAGE[model_data$MARRIAGE %in% c(0)] <-   3
+
+
+#EDUCATION
+
+
+# group 0,4,5 and 6 as other
+
+
+
+model_data$EDUCATION[model_data$EDUCATION %in% c(0,5,6)] <-   4
+
+
+
+```
+
+
+
+## convet to tidy format (maybe a bad idea not sure)
+
+
+```{r}
+
+
+model_data_tidy <- model_data %>% rename(PAY_1 = PAY_0)
+
+
+```
+
