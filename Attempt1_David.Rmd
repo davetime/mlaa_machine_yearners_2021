@@ -93,7 +93,7 @@ str(data_cred)
 
 ## Defaut Column
 
-Data imbalanced. Only 2% Y.  Consider up or down sampling in train set.
+Data a little imbalanced. Only 26% Y.  Consider up or down sampling in train set.
 
 ```{r}
 
@@ -531,15 +531,220 @@ model_data$EDUCATION[model_data$EDUCATION %in% c(0,5,6)] <-   4
 ```
 
 
+```{r}
 
-## convet to tidy format (maybe a bad idea not sure)
+str(model_data)
+
+```
+
 
 
 ```{r}
 
 
-model_data_tidy <- model_data %>% rename(PAY_1 = PAY_0)
+model_data$SEX <- as.factor(model_data$SEX) 
+model_data$EDUCATION <- as.factor(model_data$EDUCATION) 
+model_data$MARRIAGE <- as.factor(model_data$MARRIAGE) 
+model_data$AGE_BAND <- as.factor(model_data$AGE_BAND) 
+
+#da_repurch <- data_repurch[ , -which(names(data_repurch) %in% c("ID"))]
+model_data$default <- as.factor(model_data$default)
 
 
 ```
+
+# Remove age and id 
+
+```{r}
+
+model_data <- model_data[ , -which(names(model_data) %in% c("ID"))]
+model_data <- model_data[ , -which(names(model_data) %in% c("AGE"))]
+
+
+```
+
+
+# test and train splits
+
+```{r}
+set.seed(42)
+sample_set <- createDataPartition(y = model_data$default, p = .70, list = FALSE)
+data_train <- model_data[sample_set,]
+
+data_test <- model_data[-sample_set,]
+
+```
+
+
+Try downsampling with cross validation
+
+```{r}
+
+my_control_cv_down <- trainControl(method = "cv",
+                               number = 5,
+                               search="grid",
+                               summaryFunction = twoClassSummary,
+                               classProbs = TRUE,
+                               allowParallel = TRUE,
+                              sampling = "down"
+                               )
+
+```
+
+
+# use tune length 50 is a bit pointless as we don't have 50 variables. Caret actually picks mtry = 23
+
+```{r}
+
+model_train_rf_down <- train(
+ default ~ .,
+ data = data_train,
+ metric = "ROC",
+ method = "rf",
+ trControl = my_control_cv_down,
+ #tuneGrid = my_glmnet_grid,
+ tunelength = 50
+ )
+
+
+
+```
+
+
+
+
+```{r}
+
+model_train_rf_down
+
+```
+
+```{r}
+
+str(data_test)
+
+```
+# confusion matrix 
+
+```{r}
+
+model_rf_pred_down <- predict(model_train_rf_down, data_test)
+confusionMatrix(model_rf_pred_down,  data_test$default, positive = "Y", mode = "everything")
+
+
+
+```
+
+
+
+# Prepare the RF submission
+
+```{r}
+
+
+valid_data <- read_csv(here("data", "AT2_credit_test.csv"))
+
+
+```
+
+
+
+
+
+# Prepare Data
+
+```{r}
+#AGE
+#Create age band
+
+#Convet age to band, add as new column
+labs <- c(paste(seq(0, 95, by = 5), seq(0 + 5 - 1, 100 - 1, by = 5),
+                sep = "-"), paste(100, "+", sep = ""))
+
+AGE_BAND <- cut(valid_data$AGE, breaks = c(seq(0, 100, by = 5), Inf), labels = labs, right = FALSE)
+
+
+valid_data <- valid_data %>%  mutate(AGE_BAND=as.factor(AGE_BAND))
+
+
+#SEX
+#remove the below columns
+
+valid_data <- valid_data %>% filter(!SEX %in% c(2113,NA)) 
+
+
+#MARRIAGE
+
+
+# move 0 to 3
+
+valid_data$MARRIAGE[valid_data$MARRIAGE %in% c(0)] <-   3
+
+
+#EDUCATION
+
+
+# group 0,4,5 and 6 as other
+
+
+
+valid_data$EDUCATION[valid_data$EDUCATION %in% c(0,5,6)] <-   4
+
+
+#valid_data <- valid_data[ , -which(names(valid_data) %in% c("ID"))]
+valid_data <- valid_data[ , -which(names(valid_data) %in% c("AGE"))]
+
+valid_data$SEX <- as.factor(valid_data$SEX) 
+valid_data$EDUCATION <- as.factor(valid_data$EDUCATION) 
+valid_data$MARRIAGE <- as.factor(valid_data$MARRIAGE) 
+valid_data$AGE_BAND <- as.factor(valid_data$AGE_BAND) 
+
+
+
+```
+
+# Transform category variable : If the customer repurchased then YES else NO 
+
+
+```{r}
+
+#data_repurch_valid <- data_repurch_valid[ , -which(names(data_repurch) %in% c("ID"))]
+#data_repurch_valid$Target <- as.factor(ifelse(data_repurch_valid$Target=="1","YES","NO") )
+#data_repurch_valid$Target <- factor(data_repurch_valid$Target,levels = c("YES","NO"))
+
+
+
+```
+
+
+
+
+
+```{r}
+
+model_valid_pred <- predict(model_train_rf_down, valid_data[,-1],type="prob")
+
+```
+
+
+
+
+
+```{r}
+
+
+
+submission_1_rf <- tibble("ID" = valid_data$ID,'default'=model_valid_pred$Y)
+
+
+
+write_csv(submission_1_rf,here("data", "submission_1_rf1.csv"))
+
+```
+
+
+
+
+
+
 
