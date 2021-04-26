@@ -703,18 +703,7 @@ valid_data$AGE_BAND <- as.factor(valid_data$AGE_BAND)
 
 ```
 
-# Transform category variable : If the customer repurchased then YES else NO 
 
-
-```{r}
-
-#data_repurch_valid <- data_repurch_valid[ , -which(names(data_repurch) %in% c("ID"))]
-#data_repurch_valid$Target <- as.factor(ifelse(data_repurch_valid$Target=="1","YES","NO") )
-#data_repurch_valid$Target <- factor(data_repurch_valid$Target,levels = c("YES","NO"))
-
-
-
-```
 
 
 
